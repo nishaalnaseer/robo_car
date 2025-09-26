@@ -9,7 +9,6 @@
 #include <WiFi.h>
 #include "config.h"
 
-
 //
 // WARNING!!! Make sure that you have either selected ESP32 Wrover Module,
 //            or another board which has PSRAM enabled
@@ -79,24 +78,31 @@ void startCameraServer();
 void initWebSocket();
 // void cleanupClients()
 
+void setupPWM() {
+  ledcAttach(gpLf, 5000, 8); // pin, frequency, resolution
+  ledcAttach(gpLb, 5000, 8);
+  ledcAttach(gpRf, 5000, 8);
+  ledcAttach(gpRb, 5000, 8);
+}
+
+
 void setup() {
   Serial.begin(115200);
   Serial.setDebugOutput(true);
   Serial.println();
 
-
-  pinMode(gpLb, OUTPUT); //Left Backward
-  pinMode(gpLf, OUTPUT); //Left Forward
-  pinMode(gpRb, OUTPUT); //Right Forward
-  pinMode(gpRf, OUTPUT); //Right Backward
-  pinMode(gpLed, OUTPUT); //Light
+  // pinMode(gpLb, OUTPUT); //Left Backward
+  // pinMode(gpLf, OUTPUT); //Left Forward
+  // pinMode(gpRb, OUTPUT); //Right Forward
+  // pinMode(gpRf, OUTPUT); //Right Backward
+  // pinMode(gpLed, OUTPUT); //Light
 
   //initialize
-  digitalWrite(gpLb, LOW);
-  digitalWrite(gpLf, LOW);
-  digitalWrite(gpRb, LOW);
-  digitalWrite(gpRf, LOW);
-  digitalWrite(gpLed, LOW);
+  // digitalWrite(gpLb, LOW);
+  // digitalWrite(gpLf, LOW);
+  // digitalWrite(gpRb, LOW);
+  // digitalWrite(gpRf, LOW);
+  // digitalWrite(gpLed, LOW);
 
   camera_config_t config;
   config.ledc_channel = LEDC_CHANNEL_0;
@@ -150,6 +156,7 @@ void setup() {
   Serial.println("");
   Serial.println("WiFi connected");
 
+  setupPWM();
   startCameraServer();
 
   Serial.print("Camera Ready! Use 'http://");
@@ -161,8 +168,5 @@ void setup() {
 
 void loop() 
 {
-  // cleanupClients();
-
-// put your main code here, to run repeatedly:
 
 }
