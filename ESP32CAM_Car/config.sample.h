@@ -1,3 +1,3 @@
 // TODO rename this to config.h
-const char* ssid = "xxxx";   //Enter SSID WIFI Name
-const char* password = "XXXXXX";   //Enter WIFI Password
+#define WIFI_SSID "xxxx";   //Enter SSID WIFI Name
+#define WIFI_PASS "XXXXXX";   //Enter WIFI Password

@@ -3,12 +3,15 @@
  * @Description: ESP32 Camera Surveillance Car
  * @FilePath: 
  */
+#include "indexhtml.h"
 #include "esp_http_server.h"
 #include "esp_timer.h"
 #include "esp_camera.h"
 #include "img_converters.h"
 #include "camera_index.h"
 #include "Arduino.h"
+#include "ESPAsyncWebServer.h"
+
 
 extern int gpLb;
 extern int gpLf;
@@ -18,6 +21,7 @@ extern int gpLed;
 extern String WiFiAddr;
 
 void WheelAct(int nLf, int nLb, int nRf, int nRb);
+esp_err_t AnalogAct(int nLf, int nLb, int nRf, int nRb);
 
 typedef struct {
         size_t size; //number of values used for filtering
@@ -40,6 +44,46 @@ static const char* _STREAM_PART = "Content-Type: image/jpeg\r\nContent-Length: %
 static ra_filter_t ra_filter;
 httpd_handle_t stream_httpd = NULL;
 httpd_handle_t camera_httpd = NULL;
+
+
+esp_err_t set_cors_headers(httpd_req_t *req) {
+    httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+    httpd_resp_set_hdr(req, "Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    httpd_resp_set_hdr(req, "Access-Control-Allow-Headers", "*");
+    return ESP_OK;
+}
+
+// OPTIONS preflight handler
+esp_err_t options_handler(httpd_req_t *req) {
+    set_cors_headers(req);
+    httpd_resp_send(req, NULL, 0);
+    return ESP_OK;
+}
+
+// void start_server() {
+//     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
+//     httpd_handle_t server = NULL;
+
+//     if (httpd_start(&server, &config) == ESP_OK) {
+//         httpd_uri_t hello_uri = {
+//             .uri       = "/hello",
+//             .method    = HTTP_GET,
+//             .handler   = hello_handler,
+//             .user_ctx  = NULL
+//         };
+//         httpd_register_uri_handler(server, &hello_uri);
+
+//         // Register OPTIONS for preflight
+//         httpd_uri_t cors_options = {
+//             .uri       = "/*",
+//             .method    = HTTP_OPTIONS,
+//             .handler   = options_handler,
+//             .user_ctx  = NULL
+//         };
+//         httpd_register_uri_handler(server, &cors_options);
+//     }
+// }
+
 
 static ra_filter_t * ra_filter_init(ra_filter_t * filter, size_t sample_size){
     memset(filter, 0, sizeof(ra_filter_t));
@@ -128,6 +172,7 @@ static esp_err_t stream_handler(httpd_req_t *req){
     if(res != ESP_OK){
         return res;
     }
+    set_cors_headers(req);
 
     while(true){
         fb = esp_camera_fb_get();
@@ -297,30 +342,10 @@ static esp_err_t status_handler(httpd_req_t *req){
     return httpd_resp_send(req, json_response, strlen(json_response));
 }
 
-static esp_err_t index_handler(httpd_req_t *req){
+static esp_err_t index_handler(httpd_req_t *req) {
     httpd_resp_set_type(req, "text/html");
-    String page = "";
-     page += "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0\">\n";
- page += "<script>var xhttp = new XMLHttpRequest();</script>";
- page += "<script>function getsend(arg) { xhttp.open('GET', arg +'?' + new Date().getTime(), true); xhttp.send() } </script>";
- //page += "<p align=center><IMG SRC='http://" + WiFiAddr + ":81/stream' style='width:280px;'></p><br/><br/>";
- page += "<p align=center><IMG SRC='http://" + WiFiAddr + ":81/stream' style='width:300px;height:300px; transform:rotate(90deg);'></p><br/><br/>";
- 
- page += "<p align=center> <button style=background-color:lightgrey;width:90px;height:80px onmousedown=getsend('go') onmouseup=getsend('stop') ontouchstart=getsend('go') ontouchend=getsend('stop') ><b>Forward</b></button> </p>";
- page += "<p align=center>";
- page += "<button style=background-color:lightgrey;width:90px;height:80px; onmousedown=getsend('left') onmouseup=getsend('stop') ontouchstart=getsend('left') ontouchend=getsend('stop')><b>Left</b></button>&nbsp;";
- page += "<button style=background-color:indianred;width:90px;height:80px onmousedown=getsend('stop') onmouseup=getsend('stop')><b>Stop</b></button>&nbsp;";
- page += "<button style=background-color:lightgrey;width:90px;height:80px onmousedown=getsend('right') onmouseup=getsend('stop') ontouchstart=getsend('right') ontouchend=getsend('stop')><b>Right</b></button>";
- page += "</p>";
-
- page += "<p align=center><button style=background-color:lightgrey;width:90px;height:80px onmousedown=getsend('back') onmouseup=getsend('stop') ontouchstart=getsend('back') ontouchend=getsend('stop') ><b>Backward</b></button></p>";  
-
- page += "<p align=center>";
- page += "<button style=background-color:yellow;width:140px;height:40px onmousedown=getsend('ledon')><b>Light ON</b></button>";
- page += "<button style=background-color:yellow;width:140px;height:40px onmousedown=getsend('ledoff')><b>Light OFF</b></button>";
- page += "</p>";
- 
-    return httpd_resp_send(req, &page[0], strlen(&page[0]));
+    httpd_resp_send(req, index_html, strlen(index_html));
+    return ESP_OK;
 }
 
 static esp_err_t go_handler(httpd_req_t *req){
@@ -368,6 +393,92 @@ static esp_err_t ledoff_handler(httpd_req_t *req){
     httpd_resp_set_type(req, "text/html");
     return httpd_resp_send(req, "OK", 2);
 }
+
+// extern int gpLb;
+// extern int gpLf;
+// extern int gpRb;
+// extern int gpRf;
+// extern int gpLed;
+esp_err_t AnalogAct(int nLf, int nLb, int nRf, int nRb)
+{
+    // For analog control, use analogWrite instead of digitalWrite
+    analogWrite(gpLf, nLf);  // 0-255 PWM value
+    analogWrite(gpLb, nLb);
+    analogWrite(gpRf, nRf);
+    analogWrite(gpRb, nRb);
+}
+
+
+
+static esp_err_t input_stream_handler(httpd_req_t *req) {
+    char buf[32];
+    int ret;
+    esp_err_t result = ESP_OK;
+   
+    // Set headers for streaming
+    httpd_resp_set_type(req, "text/plain");
+    httpd_resp_set_hdr(req, "Cache-Control", "no-cache");
+    httpd_resp_set_hdr(req, "Connection", "keep-alive");
+    set_cors_headers(req);
+   
+    // Send initial response
+    ret = httpd_resp_send_chunk(req, "Stream started\n", 15);
+    if (ret != ESP_OK) {
+        result = ESP_FAIL;
+        goto cleanup;
+    }
+   
+    while (true) {
+        // Read incoming data chunk
+        ret = httpd_req_recv(req, buf, sizeof(buf) - 1);
+       
+        if (ret <= 0) {
+            if (ret == HTTPD_SOCK_ERR_TIMEOUT) {
+                // Timeout is normal for streaming, continue
+                continue;
+            }
+            // Connection closed or error - break from loop
+            if (ret < 0) {
+                result = ESP_FAIL;  // Mark as error if negative return
+            }
+            break;
+        }
+       
+        buf[ret] = '\0';
+       
+        // Parse the 4 bytes: lf, lb, rf, rb (0-255 each)
+        if (ret >= 4) {
+            int nLf = (unsigned char)buf[0];
+            int nLb = (unsigned char)buf[1];
+            int nRf = (unsigned char)buf[2];
+            int nRb = (unsigned char)buf[3];
+           
+            // Apply to actuators (wrap in error checking if needed)
+            if (AnalogAct(nLf, nLb, nRf, nRb) != ESP_OK) {
+                result = ESP_FAIL;
+                break;
+            }
+           
+            // Optional: Send confirmation back
+            char response[32];
+            snprintf(response, sizeof(response), "OK:%d,%d,%d,%d\n", nLf, nLb, nRf, nRb);
+            if (httpd_resp_send_chunk(req, response, strlen(response)) != ESP_OK) {
+                result = ESP_FAIL;
+                break;
+            }
+        }
+    }
+
+cleanup:
+    // Execute safety action on any failure or stream end
+    WheelAct(LOW, LOW, LOW, LOW);
+   
+    // End the stream
+    httpd_resp_send_chunk(req, NULL, 0);
+    
+    return result;
+}
+
 
 void startCameraServer(){
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
@@ -456,6 +567,18 @@ void startCameraServer(){
         .user_ctx  = NULL
     };
 
+    httpd_uri_t input_uri = {
+        .uri       = "/input",
+        .method    = HTTP_POST,
+        .handler   = input_stream_handler,
+        .user_ctx  = NULL
+    };
+    httpd_uri_t cors_options = {
+        .uri       = "/*",
+        .method    = HTTP_OPTIONS,
+        .handler   = options_handler,
+        .user_ctx  = NULL
+    };
 
     ra_filter_init(&ra_filter, 20);
     Serial.printf("Starting web server on port: '%d'", config.server_port);
@@ -468,6 +591,10 @@ void startCameraServer(){
         httpd_register_uri_handler(camera_httpd, &right_uri);
         httpd_register_uri_handler(camera_httpd, &ledon_uri);
         httpd_register_uri_handler(camera_httpd, &ledoff_uri);
+        httpd_register_uri_handler(camera_httpd, &cors_options);
+
+        //
+        // httpd_register_uri_handler(camera_httpd, &input_uri);
     }
 
     config.server_port += 1;
@@ -476,12 +603,20 @@ void startCameraServer(){
     if (httpd_start(&stream_httpd, &config) == ESP_OK) {
         httpd_register_uri_handler(stream_httpd, &stream_uri);
     }
+
+    config.server_port += 1;
+    config.ctrl_port += 1;
+    Serial.printf("Starting stream server on port: '%d'", config.server_port);
+    if (httpd_start(&stream_httpd, &config) == ESP_OK) {
+        httpd_register_uri_handler(stream_httpd, &input_uri);
+        httpd_register_uri_handler(stream_httpd, &cors_options);
+    }
 }
 
 void WheelAct(int nLf, int nLb, int nRf, int nRb)
 {
- digitalWrite(gpLf, nLf);
- digitalWrite(gpLb, nLb);
- digitalWrite(gpRf, nRf);
- digitalWrite(gpRb, nRb);
+  digitalWrite(gpLf, nLf);
+  digitalWrite(gpLb, nLb);
+  digitalWrite(gpRf, nRf);
+  digitalWrite(gpRb, nRb);
 }

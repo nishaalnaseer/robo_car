@@ -1,0 +1,7 @@
+[Unit]
+Description=Daily Let’s Encrypt certificate renewal
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/home/hp/healthpack/certbot/renew_certs.sh

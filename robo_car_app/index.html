@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Joystick Controller</title>
+    <script src="https://unpkg.com/@tailwindcss/browser@4.0.0/dist/index.mjs"></script>
+<!--    <link href="https://unpkg.com/@tailwindcss/browser@4.0.0/dist/index.mjs" rel="stylesheet">-->
+</head>
+<body class="bg-black">
+
+  <div class="w-full h-screen overflow-hidden flex justify-center items-center z-0">
+    <div class="relative w-full h-screen overflow-hidden">
+      <!-- Placeholder for your camera stream -->
+      <div class="rotate-[270deg] w-full h-full bg-gray-800 flex items-center justify-center" id="stream">
+      </div>
+      <div class="absolute top-0 left-4 text-white bg-black bg-opacity-75 p-2 rounded text-sm font-mono">
+        <div>X: <span id="xValue" class="text-4xl">0</span></div>
+        <div>Y: <span id="yValue" class="text-4xl">0</span></div>
+      </div>
+
+      <div class="absolute inset-0 flex justify-start items-end z-50 p-5">
+        <div class="relative">
+
+          <canvas id="joystick" width="400" height="400" class="border border-gray-600 rounded-full bg-gray-900 bg-opacity-50"></canvas>
+          <!-- Output display -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+
+    const streamElement = document.getElementById("stream");
+    function setStream() {
+      streamElement.innerHTML = `
+        <img src="${getOrigin()}:81/stream" class="w-full h-full object-cover"
+             style="rotate: 270deg" id="stream" alt="stream"/>
+      `;
+      console.log(streamElement);
+    }
+    setStream();
+
+    class Joystick {
+      constructor(canvasId, options = {}) {
+        this.canvas = document.getElementById(canvasId);
+        this.ctx = this.canvas.getContext('2d');
+
+        // Options
+        this.options = {
+          outerRadius: options.outerRadius || 180,
+          innerRadius: options.innerRadius || 60,
+          outerColor: options.outerColor || '#333333',
+          innerColor: options.innerColor || '#666666',
+          activeColor: options.activeColor || '#00ff00',
+          ...options
+        };
+
+        // State
+        this.centerX = this.canvas.width / 2;
+        this.centerY = this.canvas.height / 2;
+        this.knobX = this.centerX;
+        this.knobY = this.centerY;
+        this.isDragging = false;
+        this.maxDistance = this.options.outerRadius - this.options.innerRadius;
+
+        // Callbacks
+        this.onMove = options.onMove || (() => {});
+        this.onStart = options.onStart || (() => {});
+        this.onEnd = options.onEnd || (() => {});
+
+        this.init();
+      }
+
+      init() {
+        this.draw();
+        this.addEventListeners();
+      }
+
+      addEventListeners() {
+        // Mouse events
+        this.canvas.addEventListener('mousedown', this.handleStart.bind(this));
+        this.canvas.addEventListener('mousemove', this.handleMove.bind(this));
+        this.canvas.addEventListener('mouseup', this.handleEnd.bind(this));
+
+        // Global mouse events for when dragging outside canvas
+        document.addEventListener('mousemove', this.handleGlobalMove.bind(this));
+        document.addEventListener('mouseup', this.handleGlobalEnd.bind(this));
+
+        // Touch events for mobile
+        this.canvas.addEventListener('touchstart', this.handleStart.bind(this));
+        this.canvas.addEventListener('touchmove', this.handleMove.bind(this));
+        this.canvas.addEventListener('touchend', this.handleEnd.bind(this));
+        this.canvas.addEventListener('touchcancel', this.handleEnd.bind(this));
+
+        // Prevent context menu on right click
+        this.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+      }
+
+      handleStart(e) {
+        e.preventDefault();
+        const pos = this.getEventPos(e);
+        const distance = this.getDistance(pos.x, pos.y);
+
+        if (distance <= this.options.outerRadius) {
+          this.isDragging = true;
+          this.updateKnobPosition(pos.x, pos.y);
+          this.onStart(this.getValues());
+        }
+      }
+
+      handleMove(e) {
+        if (!this.isDragging) return;
+
+        e.preventDefault();
+        const pos = this.getEventPos(e);
+        this.updateKnobPosition(pos.x, pos.y);
+        this.onMove(this.getValues());
+      }
+
+      handleEnd(e) {
+        if (!this.isDragging) return;
+
+        e.preventDefault();
+        this.isDragging = false;
+
+        // Return to center with animation
+        this.animateReturn();
+        this.onEnd(this.getValues());
+      }
+
+      handleGlobalMove(e) {
+        if (!this.isDragging) return;
+
+        e.preventDefault();
+        const pos = this.getGlobalEventPos(e);
+        this.updateKnobPosition(pos.x, pos.y);
+        this.onMove(this.getValues());
+      }
+
+      handleGlobalEnd(e) {
+        if (!this.isDragging) return;
+
+        e.preventDefault();
+        this.isDragging = false;
+
+        // Return to center with animation
+        this.animateReturn();
+        this.onEnd(this.getValues());
+      }
+
+      getGlobalEventPos(e) {
+        const rect = this.canvas.getBoundingClientRect();
+        return {
+          x: e.clientX - rect.left,
+          y: e.clientY - rect.top
+        };
+      }
+
+      getEventPos(e) {
+        const rect = this.canvas.getBoundingClientRect();
+        const clientX = e.clientX || (e.touches && e.touches[0].clientX);
+        const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+
+        return {
+          x: clientX - rect.left,
+          y: clientY - rect.top
+        };
+      }
+
+      getDistance(x, y) {
+        const dx = x - this.centerX;
+        const dy = y - this.centerY;
+        return Math.sqrt(dx * dx + dy * dy);
+      }
+
+      updateKnobPosition(x, y) {
+        const dx = x - this.centerX;
+        const dy = y - this.centerY;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+
+        if (distance <= this.maxDistance) {
+          this.knobX = x;
+          this.knobY = y;
+        } else {
+          const angle = Math.atan2(dy, dx);
+          this.knobX = this.centerX + Math.cos(angle) * this.maxDistance;
+          this.knobY = this.centerY + Math.sin(angle) * this.maxDistance;
+        }
+
+        this.draw();
+        this.updateDisplay();
+      }
+
+      animateReturn() {
+        const startX = this.knobX;
+        const startY = this.knobY;
+        const startTime = Date.now();
+        const duration = 200; // ms
+
+        const animate = () => {
+          const elapsed = Date.now() - startTime;
+          const progress = Math.min(elapsed / duration, 1);
+
+          // Easing function
+          const easeOut = 1 - Math.pow(1 - progress, 3);
+
+          this.knobX = startX + (this.centerX - startX) * easeOut;
+          this.knobY = startY + (this.centerY - startY) * easeOut;
+
+          this.draw();
+          this.updateDisplay();
+
+          if (progress < 1) {
+            requestAnimationFrame(animate);
+          }
+        };
+
+        animate();
+      }
+
+      draw() {
+        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+
+        // Draw outer circle (base)
+        this.ctx.beginPath();
+        this.ctx.arc(this.centerX, this.centerY, this.options.outerRadius, 0, 2 * Math.PI);
+        this.ctx.fillStyle = this.options.outerColor;
+        this.ctx.fill();
+        this.ctx.strokeStyle = '#555555';
+        this.ctx.lineWidth = 3;
+        this.ctx.stroke();
+
+        // Draw center cross
+        this.ctx.beginPath();
+        this.ctx.strokeStyle = '#888888';
+        this.ctx.lineWidth = 1;
+        // Horizontal line
+        this.ctx.moveTo(this.centerX - 20, this.centerY);
+        this.ctx.lineTo(this.centerX + 20, this.centerY);
+        // Vertical line
+        this.ctx.moveTo(this.centerX, this.centerY - 20);
+        this.ctx.lineTo(this.centerX, this.centerY + 20);
+        this.ctx.stroke();
+
+        // Draw knob (inner circle)
+        this.ctx.beginPath();
+        this.ctx.arc(this.knobX, this.knobY, this.options.innerRadius, 0, 2 * Math.PI);
+        this.ctx.fillStyle = this.isDragging ? this.options.activeColor : this.options.innerColor;
+        this.ctx.fill();
+        this.ctx.strokeStyle = this.isDragging ? '#ffffff' : '#999999';
+        this.ctx.lineWidth = 2;
+        this.ctx.stroke();
+
+        // Draw connecting line
+        if (this.isDragging || (this.knobX !== this.centerX || this.knobY !== this.centerY)) {
+          this.ctx.beginPath();
+          this.ctx.moveTo(this.centerX, this.centerY);
+          this.ctx.lineTo(this.knobX, this.knobY);
+          this.ctx.strokeStyle = this.isDragging ? this.options.activeColor : '#666666';
+          this.ctx.lineWidth = 2;
+          this.ctx.stroke();
+        }
+      }
+
+      getValues() {
+        const dx = this.knobX - this.centerX;
+        const dy = this.knobY - this.centerY;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        const maxDistance = this.maxDistance;
+
+        return {
+          x: Math.round((dx / maxDistance) * 100) / 100, // -1 to 1
+          y: Math.round((-dy / maxDistance) * 100) / 100, // -1 to 1 (inverted Y)
+          distance: Math.round((distance / maxDistance) * 100) / 100, // 0 to 1
+          angle: Math.round((Math.atan2(-dy, dx) * 180 / Math.PI + 360) % 360), // 0 to 359
+          raw: { x: dx, y: dy, distance }
+        };
+      }
+
+      updateDisplay() {
+        const values = this.getValues();
+        document.getElementById('xValue').textContent = values.x.toFixed(2);
+        document.getElementById('yValue').textContent = values.y.toFixed(2);
+      }
+    }
+
+    let xhttp = new XMLHttpRequest();
+    function stop() {
+        xhttp.open('GET', 'stop' + '?' + new Date().getTime(), true);
+        xhttp.send()
+    }
+    // Get IP address from your input field
+    function getOrigin() {
+      return "http://192.168.1.19"
+      return window.origin;
+    }
+
+    // Initialize stream connection
+        let streamConnection = null;
+        let isConnected = false;
+        let connectionAttempts = 0;
+        let maxConnectionAttempts = 3;
+        let streamQueue = [];
+        let isProcessingQueue = false;
+        let reconnectTimer = null;
+        let heartbeatTimer = null;
+        let lastDataSent = Date.now();
+
+        // Logging function
+        function log(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const logElement = document.getElementById('log');
+            const color = type === 'error' ? '#f44336' :
+                         type === 'success' ? '#4CAF50' :
+                         type === 'warning' ? '#ff9800' : '#0f0';
+
+            logElement.innerHTML += `<span style="color: ${color}">[${timestamp}] ${message}</span>\n`;
+            logElement.scrollTop = logElement.scrollHeight;
+        }
+
+        // Update status display
+        function updateStatus(status, message) {
+            const statusElement = document.getElementById('status');
+            const connectBtn = document.getElementById('connectBtn');
+            const disconnectBtn = document.getElementById('disconnectBtn');
+
+            statusElement.className = `status ${status}`;
+            statusElement.textContent = `Status: ${message}`;
+
+            if (status === 'connected') {
+                connectBtn.disabled = true;
+                disconnectBtn.disabled = false;
+            } else {
+                connectBtn.disabled = false;
+                disconnectBtn.disabled = true;
+            }
+        }
+
+        // Initialize stream connection using XHR
+        async function initializeStreamDirect() {
+            return new Promise((resolve, reject) => {
+                log('Attempting to establish stream connection...', 'info');
+                updateStatus('connecting', 'Connecting...');
+
+                const xhr = new XMLHttpRequest();
+                const timeout = setTimeout(() => {
+                    xhr.abort();
+                    reject(new Error('Connection timeout'));
+                }, 10000); // 10 second timeout
+
+                xhr.open('POST', `${getOrigin()}:82/input`, true);
+                xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+                xhr.setRequestHeader('Connection', 'keep-alive');
+                xhr.setRequestHeader('Cache-Control', 'no-cache');
+
+                xhr.onreadystatechange = function() {
+                    if (xhr.readyState === XMLHttpRequest.OPENED ||
+                        xhr.readyState === XMLHttpRequest.HEADERS_RECEIVED) {
+                        clearTimeout(timeout);
+                        streamConnection = xhr;
+                        isConnected = true;
+                        connectionAttempts = 0;
+                        log('Stream connection established successfully', 'success');
+                        updateStatus('connected', 'Connected');
+                        startHeartbeat();
+                        resolve(true);
+                    } else if (xhr.readyState === XMLHttpRequest.DONE) {
+                        clearTimeout(timeout);
+                        if (xhr.status !== 200 && xhr.status !== 0) {
+                            log(`Stream connection failed with status: ${xhr.status}`, 'error');
+                            isConnected = false;
+                            updateStatus('disconnected', 'Connection Failed');
+                            reject(new Error(`HTTP ${xhr.status}`));
+                        }
+                    }
+                };
+
+                xhr.onerror = function(e) {
+                    clearTimeout(timeout);
+                    log(`Stream connection error: ${e.type}`, 'error');
+                    isConnected = false;
+                    updateStatus('disconnected', 'Connection Error');
+                    reject(new Error('Connection failed'));
+                };
+
+                xhr.onabort = function() {
+                    clearTimeout(timeout);
+                    log('Stream connection aborted', 'warning');
+                    isConnected = false;
+                    updateStatus('disconnected', 'Connection Aborted');
+                    reject(new Error('Connection aborted'));
+                };
+
+                // Start the connection
+                xhr.send();
+
+                // Store xhr for later use
+                window.streamXHR = xhr;
+            });
+        }
+
+        // Send 4 bytes to ESP32 through the stream
+        async function sendToESP32Stream(leftFront, leftBack, rightFront, rightBack) {
+            if (!isConnected || !streamConnection) {
+                throw new Error('Not connected to stream');
+            }
+
+            // Validate and clamp values
+            const data = new Uint8Array([
+                Math.round(Math.max(0, Math.min(255, leftFront))),
+                Math.round(Math.max(0, Math.min(255, leftBack))),
+                Math.round(Math.max(0, Math.min(255, rightFront))),
+                Math.round(Math.max(0, Math.min(255, rightBack)))
+            ]);
+
+            return new Promise((resolve, reject) => {
+                // Since XHR doesn't support streaming sends after initial send,
+                // we need to create a new request for each data packet
+                const xhr = new XMLHttpRequest();
+                const timeout = setTimeout(() => {
+                    xhr.abort();
+                    reject(new Error('Send timeout'));
+                }, 5000);
+
+                xhr.open('POST', `${getOrigin()}:82/input`, true);
+                xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+                xhr.setRequestHeader('Content-Length', '4');
+
+                xhr.onload = function() {
+                    clearTimeout(timeout);
+                    if (xhr.status === 200 || xhr.status === 0) {
+                        lastDataSent = Date.now();
+                        log(`Data sent: [${Array.from(data).join(', ')}]`, 'success');
+                        resolve(true);
+                    } else {
+                        log(`Send failed with status: ${xhr.status}`, 'error');
+                        reject(new Error(`HTTP ${xhr.status}`));
+                    }
+                };
+
+                xhr.onerror = function() {
+                    clearTimeout(timeout);
+                    log('Send error occurred', 'error');
+                    reject(new Error('Send failed'));
+                };
+
+                xhr.onabort = function() {
+                    clearTimeout(timeout);
+                    reject(new Error('Send aborted'));
+                };
+
+                try {
+                    xhr.send(data);
+                } catch (error) {
+                    clearTimeout(timeout);
+                    reject(error);
+                }
+            });
+        }
+
+        // Queue-based sending to handle rapid updates
+        function queueData(leftFront, leftBack, rightFront, rightBack) {
+            streamQueue.push({ leftFront, leftBack, rightFront, rightBack });
+            console.log("sending");
+            processQueue();
+        }
+
+        async function processQueue() {
+            if (isProcessingQueue || streamQueue.length === 0) {
+                return;
+            }
+
+            isProcessingQueue = true;
+
+            while (streamQueue.length > 0) {
+                if (!isConnected) {
+                    log('Connection lost while processing queue', 'warning');
+                    break;
+                }
+
+                // Get the latest data (discard older ones for real-time control)
+                const data = streamQueue.pop();
+                streamQueue = []; // Clear queue, keep only latest
+
+                try {
+                    await sendToESP32Stream(data.leftFront, data.leftBack,
+                                          data.rightFront, data.rightBack);
+                    await new Promise(resolve => setTimeout(resolve, 50)); // Rate limiting
+                } catch (error) {
+                    log(`Queue processing error: ${error.message}`, 'error');
+                    handleConnectionError();
+                    break;
+                }
+            }
+
+            isProcessingQueue = false;
+        }
+
+        // Handle connection errors and attempt reconnection
+        function handleConnectionError() {
+            if (isConnected) {
+                isConnected = false;
+                updateStatus('disconnected', 'Connection Lost');
+                log('Connection lost, attempting to reconnect...', 'warning');
+
+                // Attempt reconnection
+                if (connectionAttempts < maxConnectionAttempts) {
+                    reconnectTimer = setTimeout(async () => {
+                        try {
+                            await connect();
+                        } catch (error) {
+                            log(`Reconnection attempt ${connectionAttempts + 1} failed`, 'error');
+                        }
+                    }, 2000 * (connectionAttempts + 1)); // Exponential backoff
+                } else {
+                    log('Max reconnection attempts reached', 'error');
+                }
+            }
+        }
+
+        // Heartbeat to keep connection alive
+        function startHeartbeat() {
+            stopHeartbeat();
+            heartbeatTimer = setInterval(() => {
+                if (Date.now() - lastDataSent > 30000) { // 30 seconds of no data
+                    // Send heartbeat (neutral position)
+                    queueData(128, 128, 128, 128);
+                }
+            }, 15000); // Check every 15 seconds
+        }
+
+        function stopHeartbeat() {
+            if (heartbeatTimer) {
+                clearInterval(heartbeatTimer);
+                heartbeatTimer = null;
+            }
+        }
+
+        // Public functions
+        async function connect() {
+            if (isConnected) {
+                log('Already connected', 'warning');
+                return;
+            }
+
+            connectionAttempts++;
+
+            try {
+                await initializeStreamDirect();
+                log('Connection established successfully', 'success');
+            } catch (error) {
+                log(`Connection failed: ${error.message}`, 'error');
+                updateStatus('disconnected', `Failed: ${error.message}`);
+
+                if (connectionAttempts < maxConnectionAttempts) {
+                    log(`Retrying in ${2 * connectionAttempts} seconds...`, 'info');
+                    reconnectTimer = setTimeout(connect, 2000 * connectionAttempts);
+                }
+                throw error;
+            }
+        }
+
+        function disconnect() {
+            if (reconnectTimer) {
+                clearTimeout(reconnectTimer);
+                reconnectTimer = null;
+            }
+
+            stopHeartbeat();
+
+            if (streamConnection) {
+                try {
+                    streamConnection.abort();
+                } catch (error) {
+                    log(`Error during disconnect: ${error.message}`, 'warning');
+                }
+            }
+
+            if (window.streamXHR) {
+                try {
+                    window.streamXHR.abort();
+                } catch (error) {
+                    log(`Error aborting XHR: ${error.message}`, 'warning');
+                }
+            }
+
+            streamConnection = null;
+            isConnected = false;
+            connectionAttempts = 0;
+            streamQueue = [];
+            isProcessingQueue = false;
+
+            updateStatus('disconnected', 'Disconnected');
+            log('Disconnected from stream', 'info');
+        }
+
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', () => {
+            disconnect();
+        });
+
+    function calculateTankSteering(x, y) {
+      // x: -1 (left) to 1 (right)
+      // y: -1 (back) to 1 (forward)
+
+      // Convert from -1,1 range to 0,255 range
+      const normalizedY = (y + 1) * 127.5; // 0-255
+      const normalizedX = x * 127.5; // -127.5 to 127.5
+
+      // Basic tank steering formula
+      let leftMotor = normalizedY + normalizedX;
+      let rightMotor = normalizedY - normalizedX;
+      console.log("left motor");
+      console.log(leftMotor);
+
+      // Clamp values to 0 to 255 range
+      leftMotor = Math.max(0, Math.min(255, leftMotor));
+      rightMotor = Math.max(0, Math.min(255, rightMotor));
+
+      return {
+        left: leftMotor,
+        right: rightMotor
+      };
+    }
+
+    function move(values) {
+      console.info(values);
+      const motors = calculateTankSteering(values.x, values.y);
+      console.log(`Left Motor: ${motors.left.toFixed(2)}, Right Motor: ${motors.right.toFixed(2)}`);
+
+      // Convert to 4 motor values (assuming front/back differentiation)
+      // For tank steering, you might want both front and back to have same values
+      const leftFront = motors.left;
+      const leftBack = motors.left;
+      const rightFront = motors.right;
+      const rightBack = motors.right;
+      //
+      //       if (!isConnected) return;
+      //
+      // const leftFront = parseInt(document.getElementById('leftFront').value);
+      // const leftBack = parseInt(document.getElementById('leftBack').value);
+      // const rightFront = parseInt(document.getElementById('rightFront').value);
+      // const rightBack = parseInt(document.getElementById('rightBack').value);
+      //
+      // queueData(leftFront, leftBack, rightFront, rightBack);
+
+      // Send to ESP32
+      queueData(leftFront, leftBack, rightFront, rightBack);
+    }
+
+    // Initialize the joystick
+    new Joystick('joystick', {
+      outerRadius: 180,
+      innerRadius: 60,
+      outerColor: '#1a1a1a',
+      innerColor: '#4a4a4a',
+      activeColor: '#7a7979',
+      onMove: (values) => {
+        // Handle joystick movement
+        move(values);
+        // You can send these values to your server/robot here
+      },
+      onStart: (values) => {
+        move(values);
+      },
+      onEnd: (values) => {
+        stop();
+        console.log('Joystick ended:', values);
+      }
+    });
+  </script>
+
+</body>
+</html>
