@@ -46,6 +46,8 @@ httpd_handle_t stream_httpd = NULL;
 httpd_handle_t camera_httpd = NULL;
 
 
+
+
 esp_err_t set_cors_headers(httpd_req_t *req) {
     httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
     httpd_resp_set_hdr(req, "Access-Control-Allow-Methods", "GET, POST, OPTIONS");
@@ -59,30 +61,6 @@ esp_err_t options_handler(httpd_req_t *req) {
     httpd_resp_send(req, NULL, 0);
     return ESP_OK;
 }
-
-// void start_server() {
-//     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-//     httpd_handle_t server = NULL;
-
-//     if (httpd_start(&server, &config) == ESP_OK) {
-//         httpd_uri_t hello_uri = {
-//             .uri       = "/hello",
-//             .method    = HTTP_GET,
-//             .handler   = hello_handler,
-//             .user_ctx  = NULL
-//         };
-//         httpd_register_uri_handler(server, &hello_uri);
-
-//         // Register OPTIONS for preflight
-//         httpd_uri_t cors_options = {
-//             .uri       = "/*",
-//             .method    = HTTP_OPTIONS,
-//             .handler   = options_handler,
-//             .user_ctx  = NULL
-//         };
-//         httpd_register_uri_handler(server, &cors_options);
-//     }
-// }
 
 
 static ra_filter_t * ra_filter_init(ra_filter_t * filter, size_t sample_size){
@@ -394,11 +372,6 @@ static esp_err_t ledoff_handler(httpd_req_t *req){
     return httpd_resp_send(req, "OK", 2);
 }
 
-// extern int gpLb;
-// extern int gpLf;
-// extern int gpRb;
-// extern int gpRf;
-// extern int gpLed;
 esp_err_t AnalogAct(int nLf, int nLb, int nRf, int nRb)
 {
     // For analog control, use analogWrite instead of digitalWrite
@@ -482,84 +455,6 @@ cleanup:
 
 void startCameraServer(){
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-
-    httpd_uri_t go_uri = {
-        .uri       = "/go",
-        .method    = HTTP_GET,
-        .handler   = go_handler,
-        .user_ctx  = NULL
-    };
-
-    httpd_uri_t back_uri = {
-        .uri       = "/back",
-        .method    = HTTP_GET,
-        .handler   = back_handler,
-        .user_ctx  = NULL
-    };
-
-    httpd_uri_t stop_uri = {
-        .uri       = "/stop",
-        .method    = HTTP_GET,
-        .handler   = stop_handler,
-        .user_ctx  = NULL
-    };
-
-    httpd_uri_t left_uri = {
-        .uri       = "/left",
-        .method    = HTTP_GET,
-        .handler   = left_handler,
-        .user_ctx  = NULL
-    };
-    
-    httpd_uri_t right_uri = {
-        .uri       = "/right",
-        .method    = HTTP_GET,
-        .handler   = right_handler,
-        .user_ctx  = NULL
-    };
-    
-    httpd_uri_t ledon_uri = {
-        .uri       = "/ledon",
-        .method    = HTTP_GET,
-        .handler   = ledon_handler,
-        .user_ctx  = NULL
-    };
-    
-    httpd_uri_t ledoff_uri = {
-        .uri       = "/ledoff",
-        .method    = HTTP_GET,
-        .handler   = ledoff_handler,
-        .user_ctx  = NULL
-    };
-
-    httpd_uri_t index_uri = {
-        .uri       = "/",
-        .method    = HTTP_GET,
-        .handler   = index_handler,
-        .user_ctx  = NULL
-    };
-
-    httpd_uri_t status_uri = {
-        .uri       = "/status",
-        .method    = HTTP_GET,
-        .handler   = status_handler,
-        .user_ctx  = NULL
-    };
-
-    httpd_uri_t cmd_uri = {
-        .uri       = "/control",
-        .method    = HTTP_GET,
-        .handler   = cmd_handler,
-        .user_ctx  = NULL
-    };
-
-    httpd_uri_t capture_uri = {
-        .uri       = "/capture",
-        .method    = HTTP_GET,
-        .handler   = capture_handler,
-        .user_ctx  = NULL
-    };
-
     httpd_uri_t stream_uri = {
         .uri       = "/stream",
         .method    = HTTP_GET,
@@ -567,49 +462,13 @@ void startCameraServer(){
         .user_ctx  = NULL
     };
 
-    httpd_uri_t input_uri = {
-        .uri       = "/input",
-        .method    = HTTP_POST,
-        .handler   = input_stream_handler,
-        .user_ctx  = NULL
-    };
-    httpd_uri_t cors_options = {
-        .uri       = "/*",
-        .method    = HTTP_OPTIONS,
-        .handler   = options_handler,
-        .user_ctx  = NULL
-    };
-
     ra_filter_init(&ra_filter, 20);
-    Serial.printf("Starting web server on port: '%d'", config.server_port);
-    if (httpd_start(&camera_httpd, &config) == ESP_OK) {
-        httpd_register_uri_handler(camera_httpd, &index_uri);
-        httpd_register_uri_handler(camera_httpd, &go_uri); 
-        httpd_register_uri_handler(camera_httpd, &back_uri); 
-        httpd_register_uri_handler(camera_httpd, &stop_uri); 
-        httpd_register_uri_handler(camera_httpd, &left_uri);
-        httpd_register_uri_handler(camera_httpd, &right_uri);
-        httpd_register_uri_handler(camera_httpd, &ledon_uri);
-        httpd_register_uri_handler(camera_httpd, &ledoff_uri);
-        httpd_register_uri_handler(camera_httpd, &cors_options);
-
-        //
-        // httpd_register_uri_handler(camera_httpd, &input_uri);
-    }
 
     config.server_port += 1;
     config.ctrl_port += 1;
     Serial.printf("Starting stream server on port: '%d'", config.server_port);
     if (httpd_start(&stream_httpd, &config) == ESP_OK) {
         httpd_register_uri_handler(stream_httpd, &stream_uri);
-    }
-
-    config.server_port += 1;
-    config.ctrl_port += 1;
-    Serial.printf("Starting stream server on port: '%d'", config.server_port);
-    if (httpd_start(&stream_httpd, &config) == ESP_OK) {
-        httpd_register_uri_handler(stream_httpd, &input_uri);
-        httpd_register_uri_handler(stream_httpd, &cors_options);
     }
 }
 
