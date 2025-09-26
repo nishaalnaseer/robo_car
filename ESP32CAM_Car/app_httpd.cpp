@@ -10,18 +10,12 @@
 #include "img_converters.h"
 #include "camera_index.h"
 #include "Arduino.h"
-#include "ESPAsyncWebServer.h"
 
-
-extern int gpLb;
-extern int gpLf;
-extern int gpRb;
-extern int gpRf;
-extern int gpLed;
 extern String WiFiAddr;
 
 void WheelAct(int nLf, int nLb, int nRf, int nRb);
-esp_err_t AnalogAct(int nLf, int nLb, int nRf, int nRb);
+void AnalogAct(int nLf, int nLb, int nRf, int nRb);
+extern int gpLed;
 
 typedef struct {
         size_t size; //number of values used for filtering
@@ -44,8 +38,6 @@ static const char* _STREAM_PART = "Content-Type: image/jpeg\r\nContent-Length: %
 static ra_filter_t ra_filter;
 httpd_handle_t stream_httpd = NULL;
 httpd_handle_t camera_httpd = NULL;
-
-
 
 
 esp_err_t set_cors_headers(httpd_req_t *req) {
@@ -372,85 +364,75 @@ static esp_err_t ledoff_handler(httpd_req_t *req){
     return httpd_resp_send(req, "OK", 2);
 }
 
-esp_err_t AnalogAct(int nLf, int nLb, int nRf, int nRb)
-{
-    // For analog control, use analogWrite instead of digitalWrite
-    analogWrite(gpLf, nLf);  // 0-255 PWM value
-    analogWrite(gpLb, nLb);
-    analogWrite(gpRf, nRf);
-    analogWrite(gpRb, nRb);
-}
 
-
-
-static esp_err_t input_stream_handler(httpd_req_t *req) {
-    char buf[32];
-    int ret;
-    esp_err_t result = ESP_OK;
+// static esp_err_t input_stream_handler(httpd_req_t *req) {
+//     char buf[32];
+//     int ret;
+//     esp_err_t result = ESP_OK;
    
-    // Set headers for streaming
-    httpd_resp_set_type(req, "text/plain");
-    httpd_resp_set_hdr(req, "Cache-Control", "no-cache");
-    httpd_resp_set_hdr(req, "Connection", "keep-alive");
-    set_cors_headers(req);
+//     // Set headers for streaming
+//     httpd_resp_set_type(req, "text/plain");
+//     httpd_resp_set_hdr(req, "Cache-Control", "no-cache");
+//     httpd_resp_set_hdr(req, "Connection", "keep-alive");
+//     set_cors_headers(req);
    
-    // Send initial response
-    ret = httpd_resp_send_chunk(req, "Stream started\n", 15);
-    if (ret != ESP_OK) {
-        result = ESP_FAIL;
-        goto cleanup;
-    }
+//     // Send initial response
+//     ret = httpd_resp_send_chunk(req, "Stream started\n", 15);
+//     if (ret != ESP_OK) {
+//         result = ESP_FAIL;
+//         goto cleanup;
+//     }
    
-    while (true) {
-        // Read incoming data chunk
-        ret = httpd_req_recv(req, buf, sizeof(buf) - 1);
+//     while (true) {
+//         // Read incoming data chunk
+//         ret = httpd_req_recv(req, buf, sizeof(buf) - 1);
        
-        if (ret <= 0) {
-            if (ret == HTTPD_SOCK_ERR_TIMEOUT) {
-                // Timeout is normal for streaming, continue
-                continue;
-            }
-            // Connection closed or error - break from loop
-            if (ret < 0) {
-                result = ESP_FAIL;  // Mark as error if negative return
-            }
-            break;
-        }
+//         if (ret <= 0) {
+//             if (ret == HTTPD_SOCK_ERR_TIMEOUT) {
+//                 // Timeout is normal for streaming, continue
+//                 continue;
+//             }
+//             // Connection closed or error - break from loop
+//             if (ret < 0) {
+//                 result = ESP_FAIL;  // Mark as error if negative return
+//             }
+//             break;
+//         }
        
-        buf[ret] = '\0';
+//         buf[ret] = '\0';
        
-        // Parse the 4 bytes: lf, lb, rf, rb (0-255 each)
-        if (ret >= 4) {
-            int nLf = (unsigned char)buf[0];
-            int nLb = (unsigned char)buf[1];
-            int nRf = (unsigned char)buf[2];
-            int nRb = (unsigned char)buf[3];
+//         // Parse the 4 bytes: lf, lb, rf, rb (0-255 each)
+//         if (ret >= 4) {
+//             int nLf = (unsigned char)buf[0];
+//             int nLb = (unsigned char)buf[1];
+//             int nRf = (unsigned char)buf[2];
+//             int nRb = (unsigned char)buf[3];
            
-            // Apply to actuators (wrap in error checking if needed)
-            if (AnalogAct(nLf, nLb, nRf, nRb) != ESP_OK) {
-                result = ESP_FAIL;
-                break;
-            }
+//             // Apply to actuators (wrap in error checking if needed)
+//             if (AnalogAct(nLf, nLb, nRf, nRb) != ESP_OK) {
+//                 result = ESP_FAIL;
+//                 break;
+//             }
            
-            // Optional: Send confirmation back
-            char response[32];
-            snprintf(response, sizeof(response), "OK:%d,%d,%d,%d\n", nLf, nLb, nRf, nRb);
-            if (httpd_resp_send_chunk(req, response, strlen(response)) != ESP_OK) {
-                result = ESP_FAIL;
-                break;
-            }
-        }
-    }
+//             // Optional: Send confirmation back
+//             char response[32];
+//             snprintf(response, sizeof(response), "OK:%d,%d,%d,%d\n", nLf, nLb, nRf, nRb);
+//             if (httpd_resp_send_chunk(req, response, strlen(response)) != ESP_OK) {
+//                 result = ESP_FAIL;
+//                 break;
+//             }
+//         }
+//     }
 
-cleanup:
-    // Execute safety action on any failure or stream end
-    WheelAct(LOW, LOW, LOW, LOW);
+// cleanup:
+//     // Execute safety action on any failure or stream end
+//     WheelAct(LOW, LOW, LOW, LOW);
    
-    // End the stream
-    httpd_resp_send_chunk(req, NULL, 0);
+//     // End the stream
+//     httpd_resp_send_chunk(req, NULL, 0);
     
-    return result;
-}
+//     return result;
+// }
 
 
 void startCameraServer(){
@@ -472,10 +454,10 @@ void startCameraServer(){
     }
 }
 
-void WheelAct(int nLf, int nLb, int nRf, int nRb)
-{
-  digitalWrite(gpLf, nLf);
-  digitalWrite(gpLb, nLb);
-  digitalWrite(gpRf, nRf);
-  digitalWrite(gpRb, nRb);
-}
+// void WheelAct(int nLf, int nLb, int nRf, int nRb)
+// {
+//   digitalWrite(gpLf, nLf);
+//   digitalWrite(gpLb, nLb);
+//   digitalWrite(gpRf, nRf);
+//   digitalWrite(gpRb, nRb);
+// }

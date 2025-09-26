@@ -76,6 +76,8 @@ extern int gpLed =  4; // Light
 extern String WiFiAddr ="";
 
 void startCameraServer();
+void initWebSocket();
+// void cleanupClients()
 
 void setup() {
   Serial.begin(115200);
@@ -154,11 +156,13 @@ void setup() {
   Serial.print(WiFi.localIP());
   WiFiAddr = WiFi.localIP().toString();
   Serial.println("' to connect");
+  initWebSocket();
 }
 
 void loop() 
 {
-  
+  // cleanupClients();
+
 // put your main code here, to run repeatedly:
 
 }

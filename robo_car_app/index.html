@@ -32,6 +32,7 @@
   <script>
 
     const streamElement = document.getElementById("stream");
+    let ws = null;
     function setStream() {
       streamElement.innerHTML = `
         <img src="${getOrigin()}:81/stream" class="w-full h-full object-cover"
@@ -40,6 +41,12 @@
       console.log(streamElement);
     }
     setStream();
+
+    function onLoad() {
+      ws = new WebSocket(`/ws`);
+      // ws.se
+    }
+    onLoad();
 
     class Joystick {
       constructor(canvasId, options = {}) {
@@ -285,320 +292,15 @@
       }
     }
 
-    let xhttp = new XMLHttpRequest();
-    function stop() {
-        xhttp.open('GET', 'stop' + '?' + new Date().getTime(), true);
-        xhttp.send()
-    }
+    // function stop() {
+    //     xhttp.open('GET', 'stop' + '?' + new Date().getTime(), true);
+    //     xhttp.send()
+    // }
     // Get IP address from your input field
     function getOrigin() {
-      return "http://192.168.1.19"
+      // return "http://192.168.1.19"
       return window.origin;
     }
-
-    // Initialize stream connection
-        let streamConnection = null;
-        let isConnected = false;
-        let connectionAttempts = 0;
-        let maxConnectionAttempts = 3;
-        let streamQueue = [];
-        let isProcessingQueue = false;
-        let reconnectTimer = null;
-        let heartbeatTimer = null;
-        let lastDataSent = Date.now();
-
-        // Logging function
-        function log(message, type = 'info') {
-            const timestamp = new Date().toLocaleTimeString();
-            const logElement = document.getElementById('log');
-            const color = type === 'error' ? '#f44336' :
-                         type === 'success' ? '#4CAF50' :
-                         type === 'warning' ? '#ff9800' : '#0f0';
-
-            logElement.innerHTML += `<span style="color: ${color}">[${timestamp}] ${message}</span>\n`;
-            logElement.scrollTop = logElement.scrollHeight;
-        }
-
-        // Update status display
-        function updateStatus(status, message) {
-            const statusElement = document.getElementById('status');
-            const connectBtn = document.getElementById('connectBtn');
-            const disconnectBtn = document.getElementById('disconnectBtn');
-
-            statusElement.className = `status ${status}`;
-            statusElement.textContent = `Status: ${message}`;
-
-            if (status === 'connected') {
-                connectBtn.disabled = true;
-                disconnectBtn.disabled = false;
-            } else {
-                connectBtn.disabled = false;
-                disconnectBtn.disabled = true;
-            }
-        }
-
-        // Initialize stream connection using XHR
-        async function initializeStreamDirect() {
-            return new Promise((resolve, reject) => {
-                log('Attempting to establish stream connection...', 'info');
-                updateStatus('connecting', 'Connecting...');
-
-                const xhr = new XMLHttpRequest();
-                const timeout = setTimeout(() => {
-                    xhr.abort();
-                    reject(new Error('Connection timeout'));
-                }, 10000); // 10 second timeout
-
-                xhr.open('POST', `${getOrigin()}:82/input`, true);
-                xhr.setRequestHeader('Content-Type', 'application/octet-stream');
-                xhr.setRequestHeader('Connection', 'keep-alive');
-                xhr.setRequestHeader('Cache-Control', 'no-cache');
-
-                xhr.onreadystatechange = function() {
-                    if (xhr.readyState === XMLHttpRequest.OPENED ||
-                        xhr.readyState === XMLHttpRequest.HEADERS_RECEIVED) {
-                        clearTimeout(timeout);
-                        streamConnection = xhr;
-                        isConnected = true;
-                        connectionAttempts = 0;
-                        log('Stream connection established successfully', 'success');
-                        updateStatus('connected', 'Connected');
-                        startHeartbeat();
-                        resolve(true);
-                    } else if (xhr.readyState === XMLHttpRequest.DONE) {
-                        clearTimeout(timeout);
-                        if (xhr.status !== 200 && xhr.status !== 0) {
-                            log(`Stream connection failed with status: ${xhr.status}`, 'error');
-                            isConnected = false;
-                            updateStatus('disconnected', 'Connection Failed');
-                            reject(new Error(`HTTP ${xhr.status}`));
-                        }
-                    }
-                };
-
-                xhr.onerror = function(e) {
-                    clearTimeout(timeout);
-                    log(`Stream connection error: ${e.type}`, 'error');
-                    isConnected = false;
-                    updateStatus('disconnected', 'Connection Error');
-                    reject(new Error('Connection failed'));
-                };
-
-                xhr.onabort = function() {
-                    clearTimeout(timeout);
-                    log('Stream connection aborted', 'warning');
-                    isConnected = false;
-                    updateStatus('disconnected', 'Connection Aborted');
-                    reject(new Error('Connection aborted'));
-                };
-
-                // Start the connection
-                xhr.send();
-
-                // Store xhr for later use
-                window.streamXHR = xhr;
-            });
-        }
-
-        // Send 4 bytes to ESP32 through the stream
-        async function sendToESP32Stream(leftFront, leftBack, rightFront, rightBack) {
-            if (!isConnected || !streamConnection) {
-                throw new Error('Not connected to stream');
-            }
-
-            // Validate and clamp values
-            const data = new Uint8Array([
-                Math.round(Math.max(0, Math.min(255, leftFront))),
-                Math.round(Math.max(0, Math.min(255, leftBack))),
-                Math.round(Math.max(0, Math.min(255, rightFront))),
-                Math.round(Math.max(0, Math.min(255, rightBack)))
-            ]);
-
-            return new Promise((resolve, reject) => {
-                // Since XHR doesn't support streaming sends after initial send,
-                // we need to create a new request for each data packet
-                const xhr = new XMLHttpRequest();
-                const timeout = setTimeout(() => {
-                    xhr.abort();
-                    reject(new Error('Send timeout'));
-                }, 5000);
-
-                xhr.open('POST', `${getOrigin()}:82/input`, true);
-                xhr.setRequestHeader('Content-Type', 'application/octet-stream');
-                xhr.setRequestHeader('Content-Length', '4');
-
-                xhr.onload = function() {
-                    clearTimeout(timeout);
-                    if (xhr.status === 200 || xhr.status === 0) {
-                        lastDataSent = Date.now();
-                        log(`Data sent: [${Array.from(data).join(', ')}]`, 'success');
-                        resolve(true);
-                    } else {
-                        log(`Send failed with status: ${xhr.status}`, 'error');
-                        reject(new Error(`HTTP ${xhr.status}`));
-                    }
-                };
-
-                xhr.onerror = function() {
-                    clearTimeout(timeout);
-                    log('Send error occurred', 'error');
-                    reject(new Error('Send failed'));
-                };
-
-                xhr.onabort = function() {
-                    clearTimeout(timeout);
-                    reject(new Error('Send aborted'));
-                };
-
-                try {
-                    xhr.send(data);
-                } catch (error) {
-                    clearTimeout(timeout);
-                    reject(error);
-                }
-            });
-        }
-
-        // Queue-based sending to handle rapid updates
-        function queueData(leftFront, leftBack, rightFront, rightBack) {
-            streamQueue.push({ leftFront, leftBack, rightFront, rightBack });
-            console.log("sending");
-            processQueue();
-        }
-
-        async function processQueue() {
-            if (isProcessingQueue || streamQueue.length === 0) {
-                return;
-            }
-
-            isProcessingQueue = true;
-
-            while (streamQueue.length > 0) {
-                if (!isConnected) {
-                    log('Connection lost while processing queue', 'warning');
-                    break;
-                }
-
-                // Get the latest data (discard older ones for real-time control)
-                const data = streamQueue.pop();
-                streamQueue = []; // Clear queue, keep only latest
-
-                try {
-                    await sendToESP32Stream(data.leftFront, data.leftBack,
-                                          data.rightFront, data.rightBack);
-                    await new Promise(resolve => setTimeout(resolve, 50)); // Rate limiting
-                } catch (error) {
-                    log(`Queue processing error: ${error.message}`, 'error');
-                    handleConnectionError();
-                    break;
-                }
-            }
-
-            isProcessingQueue = false;
-        }
-
-        // Handle connection errors and attempt reconnection
-        function handleConnectionError() {
-            if (isConnected) {
-                isConnected = false;
-                updateStatus('disconnected', 'Connection Lost');
-                log('Connection lost, attempting to reconnect...', 'warning');
-
-                // Attempt reconnection
-                if (connectionAttempts < maxConnectionAttempts) {
-                    reconnectTimer = setTimeout(async () => {
-                        try {
-                            await connect();
-                        } catch (error) {
-                            log(`Reconnection attempt ${connectionAttempts + 1} failed`, 'error');
-                        }
-                    }, 2000 * (connectionAttempts + 1)); // Exponential backoff
-                } else {
-                    log('Max reconnection attempts reached', 'error');
-                }
-            }
-        }
-
-        // Heartbeat to keep connection alive
-        function startHeartbeat() {
-            stopHeartbeat();
-            heartbeatTimer = setInterval(() => {
-                if (Date.now() - lastDataSent > 30000) { // 30 seconds of no data
-                    // Send heartbeat (neutral position)
-                    queueData(128, 128, 128, 128);
-                }
-            }, 15000); // Check every 15 seconds
-        }
-
-        function stopHeartbeat() {
-            if (heartbeatTimer) {
-                clearInterval(heartbeatTimer);
-                heartbeatTimer = null;
-            }
-        }
-
-        // Public functions
-        async function connect() {
-            if (isConnected) {
-                log('Already connected', 'warning');
-                return;
-            }
-
-            connectionAttempts++;
-
-            try {
-                await initializeStreamDirect();
-                log('Connection established successfully', 'success');
-            } catch (error) {
-                log(`Connection failed: ${error.message}`, 'error');
-                updateStatus('disconnected', `Failed: ${error.message}`);
-
-                if (connectionAttempts < maxConnectionAttempts) {
-                    log(`Retrying in ${2 * connectionAttempts} seconds...`, 'info');
-                    reconnectTimer = setTimeout(connect, 2000 * connectionAttempts);
-                }
-                throw error;
-            }
-        }
-
-        function disconnect() {
-            if (reconnectTimer) {
-                clearTimeout(reconnectTimer);
-                reconnectTimer = null;
-            }
-
-            stopHeartbeat();
-
-            if (streamConnection) {
-                try {
-                    streamConnection.abort();
-                } catch (error) {
-                    log(`Error during disconnect: ${error.message}`, 'warning');
-                }
-            }
-
-            if (window.streamXHR) {
-                try {
-                    window.streamXHR.abort();
-                } catch (error) {
-                    log(`Error aborting XHR: ${error.message}`, 'warning');
-                }
-            }
-
-            streamConnection = null;
-            isConnected = false;
-            connectionAttempts = 0;
-            streamQueue = [];
-            isProcessingQueue = false;
-
-            updateStatus('disconnected', 'Disconnected');
-            log('Disconnected from stream', 'info');
-        }
-
-        // Cleanup on page unload
-        window.addEventListener('beforeunload', () => {
-            disconnect();
-        });
 
     function calculateTankSteering(x, y) {
       // x: -1 (left) to 1 (right)
@@ -635,6 +337,12 @@
       const leftBack = motors.left;
       const rightFront = motors.right;
       const rightBack = motors.right;
+
+      // int nLf, int nLb, int nRf, int nRb
+      const timestamp = Date.now(); // e.g., 1698765432123
+      const message = `${timestamp},${leftFront},${leftBack},${rightFront},${rightBack}`;
+      ws.send(message);
+
       //
       //       if (!isConnected) return;
       //
@@ -646,7 +354,6 @@
       // queueData(leftFront, leftBack, rightFront, rightBack);
 
       // Send to ESP32
-      queueData(leftFront, leftBack, rightFront, rightBack);
     }
 
     // Initialize the joystick
