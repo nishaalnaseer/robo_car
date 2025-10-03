@@ -1,0 +1,40 @@
+#ifndef INDEXHTML_H
+#define INDEXHTML_H
+
+#include <pgmspace.h>
+
+const char index_html[] PROGMEM = R"rawliteral(
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Joystick Controller</title>
+    <script src="https://unpkg.com/@tailwindcss/browser@4.0.0/dist/index.mjs"></script>
+</head>
+<body class="bg-black">
+
+  <div class="w-full h-screen overflow-hidden flex justify-center items-center z-0">
+    <div class="relative w-full h-screen overflow-hidden">
+      <div class="" id="stream">
+      </div>
+      <div class="absolute top-0 left-4 text-white bg-transparent p-2 rounded text-sm font-mono">
+        <div>X: <span id="xValue" class="text-4xl">0</span></div>
+        <div>Y: <span id="yValue" class="text-4xl">0</span></div>
+      </div>
+
+      <div class="absolute inset-0 flex justify-start items-end z-50 p-5">
+        <div class="relative">
+          <canvas id="joystick" width="300" height="300" class="border border-gray-600 rounded-full bg-gray-900 bg-opacity-50"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="index.js" type="module"></script>
+</body>
+</html>
+
+)rawliteral";
+
+#endif
