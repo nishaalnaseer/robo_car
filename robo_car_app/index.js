@@ -7,6 +7,8 @@ const MINIMUM_THRESHOLD = 140;
 const circle = new CircleMagik();
 let reconnectTimeout = null;
 let reconnectDelay = 200; // can adjust or implement backoff
+let gear = 4;
+let lastGearChanged = 0;
 
 // Initialize the joystick
 new Joystick('joystick', {
@@ -72,6 +74,7 @@ function updateDisplay(values) {
   // const values = this.getValues();
   document.getElementById('xValue').textContent = values.x.toFixed(2);
   document.getElementById('yValue').textContent = values.y.toFixed(2);
+  document.getElementById('gear').textContent = gear;
 }
 function getOrigin() {
   return window.origin;
@@ -133,6 +136,9 @@ function move(values) {
   }
   lastSent = timestamp;
 
+  values.y = (values.y * gear) / 4;
+  values.x = (values.x * gear) / 4;
+
   const motors = calculateTankSteering(values.x, values.y);
 
   // For tank steering: left wheels move together, right wheels move together
@@ -140,9 +146,7 @@ function move(values) {
   let leftBack = motors.leftBackward;
   let rightFront = motors.rightForward;
   let rightBack = motors.rightBackward;
-  console.log(`before led ${led}`)
   led = (led ?? 0) * 255;
-  console.log(`after led ${led}`)
   if(leftFront <= MINIMUM_THRESHOLD) {
     leftFront = 0;
   }
@@ -172,7 +176,9 @@ const gamepadAPI = {
     console.log(e);
   },
   update() {},
-  buttonPressed() {},
+  buttonPressed() {
+
+  },
   buttons: [],
   buttonsCache: [],
   buttonsStatus: [],
@@ -181,11 +187,32 @@ const gamepadAPI = {
 
 function checkPads() {
   const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+  const time = Date.now();
   let gamePadConnected = false;
   for (let i = 0; i < pads.length; i++) {
     const gp = pads[i]
     if (gp) {
       gamePadConnected = true;
+      if(gp.buttons[4].pressed && gp.buttons[5].pressed){
+
+      } else {
+        if((time - lastGearChanged) > 500) {
+          if (gp.buttons[4].pressed) {
+            if(gear > 1) {
+              gear--;
+              lastGearChanged = time;
+            }
+          }
+          if (gp.buttons[5].pressed) {
+            if(gear < 4) {
+              gear++;
+              lastGearChanged = time;
+            }
+          }
+        }
+      }
+
+
       const rightX = gp.axes[2];
       const rightY = gp.axes[3];
       const rt = gp.buttons[7]; // RT is usually index 7
